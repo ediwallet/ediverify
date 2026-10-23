@@ -80,4 +80,4 @@ npm test
 35 tests: Ed25519 tokens (mutation, expiry, replay), OpenID4VP requests, SD-JWT VC (forged and stripped disclosures, nonce/aud/key binding), zero-PII, plans.
 
 ## Licence
-Apache-2.0 for the bridge and widget, GPL-2.0-or-later for the WordPress plugin. See [LICENSE](LICENSE). Copyright 2026 Matineus (KvK 86555219).
+Apache-2.0 for the bridge and widget, GPL-2.0-or-later for the WordPress plugin. See [LICENSING.md](LICENSING.md). Copyright 2026 Matineus (KvK 86555219).
