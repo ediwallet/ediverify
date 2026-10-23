@@ -1,12 +1,19 @@
 # Roadmap
 
+## Done in v0.2.0 (own funds)
+- Ed25519 boolean tokens + JWKS, PHP offline verification in the WooCommerce plugin.
+- OpenID4VP request builder (DCQL + presentation_definition).
+- SD-JWT VC verifier with key binding, test suite.
+
+## Planned with NLnet
+
 Planned work for the NLnet Restack proposal. Budget: EUR 35,000 = 437.5 hours at EUR 80/hour.
 
 | # | Milestone | Hours | EUR |
 |---|---|---:|---:|
 | M1 | OpenID4VP verifier core | 100 | 8,000 |
 | M2 | ISO/IEC 18013-5 mdoc verification | 100 | 8,000 |
-| M3 | SD-JWT VC + Ed25519 boolean tokens | 80 | 6,400 |
+| M3 | SD-JWT VC hardening + token spec | 80 | 6,400 |
 | M4 | Shop plugins: WooCommerce, OpenCart, PrestaShop + widget 1.0 | 97.5 | 7,800 |
 | M5 | Test suite against the Dutch reference wallet, security audit fixes, docs | 60 | 4,800 |
 | | **Total** | **437.5** | **35,000** |
@@ -22,9 +29,9 @@ Planned work for the NLnet Restack proposal. Budget: EUR 35,000 = 437.5 hours at
 - Selective disclosure of `age_over_18` and driving licence privileges (mDL).
 - Deliverable: verified mdoc presentations, test vectors published.
 
-## M3 SD-JWT VC + boolean tokens (80 h)
-- SD-JWT VC verification (issuer signature, disclosures, key binding JWT, status list).
-- Replace HMAC tokens with Ed25519-signed tokens plus a JWKS endpoint so shops can verify offline. Short lifetime, nonce bound to order reference, no replay.
+## M3 SD-JWT VC hardening + token spec (80 h)
+- Extend the v0.2 verifier: status list revocation, issuer metadata and x5c chains, type metadata, conformance against the official test vectors.
+- Formal token specification, key rotation, reference verifiers in JavaScript and PHP.
 - Deliverable: token spec + reference verifiers in JavaScript and PHP.
 
 ## M4 Plugins + widget 1.0 (97.5 h)

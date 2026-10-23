@@ -3,7 +3,7 @@
  * Plugin Name:       EdiVerify for WooCommerce
  * Plugin URI:        https://ediverify.nl/
  * Description:       Leeftijds- en ID-verificatie via NL Wallet, Europese EDI-wallets, iDIN en Yivi in de WooCommerce checkout. Slaat geen persoonsgegevens op.
- * Version:           1.1.0
+ * Version:           1.2.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Matineus (KvK 86555219)
@@ -17,8 +17,10 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'EDIVERIFY_WC_VERSION', '1.1.0' );
+define( 'EDIVERIFY_WC_VERSION', '1.2.0' );
 define( 'EDIVERIFY_WC_BASE', 'https://ediverify.nl' );
+// Public Ed25519 key of the hosted service (kid ediverify-ed25519-2026-01), see https://ediverify.nl/.well-known/jwks.json
+define( 'EDIVERIFY_WC_DEFAULT_ED25519_X', 'nSR6nXBnQUEoLSUzPSi6C94yrCeZIPQkIJsNOHzQShc' );
 
 add_action( 'before_woocommerce_init', function () {
 	if ( class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
@@ -74,7 +76,8 @@ final class EdiVerify_WC {
 			array( 'title' => __( 'Toepassen op', 'ediverify-woocommerce' ), 'id' => 'ediverify_scope', 'type' => 'select', 'options' => array( 'all' => __( 'Alle producten', 'ediverify-woocommerce' ), 'selected' => __( 'Alleen geselecteerde categorieën of producten', 'ediverify-woocommerce' ) ), 'default' => 'all' ),
 			array( 'title' => __( '18+ categorieën', 'ediverify-woocommerce' ), 'id' => 'ediverify_categories', 'type' => 'multiselect', 'class' => 'wc-enhanced-select', 'options' => $cats, 'default' => array() ),
 			array( 'title' => __( 'Product-ID\'s', 'ediverify-woocommerce' ), 'id' => 'ediverify_products', 'type' => 'text', 'desc' => __( 'Kommagescheiden, bijv. 12,45,98', 'ediverify-woocommerce' ), 'default' => '' ),
-			array( 'title' => __( 'Server-side controle', 'ediverify-woocommerce' ), 'id' => 'ediverify_remote_verify', 'type' => 'checkbox', 'desc' => __( 'Controleer de handtekening van het token ook bij de EdiVerify API (aanbevolen).', 'ediverify-woocommerce' ), 'default' => 'yes' ),
+			array( 'title' => __( 'Ed25519 publieke sleutel', 'ediverify-woocommerce' ), 'id' => 'ediverify_ed25519_x', 'type' => 'text', 'desc' => __( 'Waarde "x" uit /.well-known/jwks.json (base64url). Leeg = sleutel van ediverify.nl. Zelf-hosters vullen hier hun eigen sleutel in.', 'ediverify-woocommerce' ), 'default' => '' ),
+			array( 'title' => __( 'Server-side controle', 'ediverify-woocommerce' ), 'id' => 'ediverify_remote_verify', 'type' => 'select', 'options' => array( 'fallback' => __( 'Alleen als offline Ed25519-controle niet mogelijk is (aanbevolen)', 'ediverify-woocommerce' ), 'always' => __( 'Altijd, naast de offline controle', 'ediverify-woocommerce' ), 'never' => __( 'Nooit', 'ediverify-woocommerce' ) ), 'default' => 'fallback' ),
 			array( 'title' => __( 'API-adres', 'ediverify-woocommerce' ), 'id' => 'ediverify_api_base', 'type' => 'text', 'desc' => __( 'Laat leeg voor de gehoste dienst, of vul het adres van je eigen verifier-bridge in.', 'ediverify-woocommerce' ), 'default' => '' ),
 			array( 'type' => 'sectionend', 'id' => 'ediverify_section' ),
 		);
@@ -137,27 +140,84 @@ final class EdiVerify_WC {
 		echo '</div>';
 	}
 
-	/** Decodes the token and checks the boolean attestation. Returns the verification id or false. */
+	public static function b64url_decode( $s ) {
+		$s = strtr( (string) $s, '-_', '+/' );
+		$pad = strlen( $s ) % 4;
+		if ( $pad ) {
+			$s .= str_repeat( '=', 4 - $pad );
+		}
+		return base64_decode( $s, true );
+	}
+
+	public static function public_key() {
+		$x = trim( (string) get_option( 'ediverify_ed25519_x', '' ) );
+		$raw = self::b64url_decode( $x ? $x : EDIVERIFY_WC_DEFAULT_ED25519_X );
+		return ( false !== $raw && 32 === strlen( $raw ) ) ? $raw : false;
+	}
+
+	/**
+	 * Offline Ed25519 verification of a compact token "<payload_b64url>.<signature_b64url>".
+	 * Returns the decoded payload array, false if invalid, or null if offline verification is not possible.
+	 */
+	public static function verify_ed25519( $token ) {
+		$parts = explode( '.', (string) $token );
+		if ( 2 !== count( $parts ) ) {
+			return false;
+		}
+		$pk = self::public_key();
+		if ( ! $pk || ! function_exists( 'sodium_crypto_sign_verify_detached' ) ) {
+			return null;
+		}
+		$sig = self::b64url_decode( $parts[1] );
+		if ( false === $sig || 64 !== strlen( $sig ) ) {
+			return false;
+		}
+		try {
+			if ( ! sodium_crypto_sign_verify_detached( $sig, $parts[0], $pk ) ) {
+				return false;
+			}
+		} catch ( \SodiumException $e ) {
+			return false;
+		}
+		$data = json_decode( (string) self::b64url_decode( $parts[0] ), true );
+		return is_array( $data ) ? $data : false;
+	}
+
+	/** Checks the boolean attestation. Returns the verification id or false. */
 	public static function validate_token( $token ) {
-		$json = base64_decode( strtr( (string) $token, '-_', '+/' ), true );
-		$data = $json ? json_decode( $json, true ) : null;
-		if ( ! is_array( $data ) || empty( $data['verificationId'] ) || empty( $data['signature'] ) ) {
-			return false;
+		static $cache = array();
+		if ( isset( $cache[ $token ] ) ) {
+			return $cache[ $token ];
 		}
-		if ( true !== ( $data['result'] ?? null ) || self::check() !== ( $data['attribute'] ?? '' ) ) {
-			return false;
+		$mode    = get_option( 'ediverify_remote_verify', 'fallback' );
+		$payload = self::verify_ed25519( $token );
+		if ( false === $payload ) {
+			return $cache[ $token ] = false;
 		}
-		if ( ! preg_match( '/^ver_[0-9a-f]{24}$/', $data['verificationId'] ) || ! preg_match( '/^[0-9a-f]{64}$/', $data['signature'] ) ) {
-			return false;
+		if ( null === $payload ) {
+			// Offline not possible (no sodium or no key): fall back to the API.
+			if ( 'never' === $mode ) {
+				return $cache[ $token ] = false;
+			}
+			$remote = self::remote_verify( $token );
+			if ( ! $remote ) {
+				return $cache[ $token ] = false;
+			}
+			$payload = array( 'typ' => 'ediverify-attestation+v1', 'vid' => $remote['verificationId'], 'att' => $remote['attribute'], 'res' => $remote['result'], 'exp' => time() + 60, 'iat' => time(), 'env' => $remote['environment'] ?? '' );
+		} elseif ( 'always' === $mode && ! self::remote_verify( $token ) ) {
+			return $cache[ $token ] = false;
 		}
-		$issued = strtotime( $data['issuedAt'] ?? '' );
-		if ( ! $issued || abs( time() - $issued ) > 3600 ) {
-			return false;
+		$now = time();
+		$ok  = 'ediverify-attestation+v1' === ( $payload['typ'] ?? '' )
+			&& true === ( $payload['res'] ?? null )
+			&& self::check() === ( $payload['att'] ?? '' )
+			&& isset( $payload['exp'], $payload['iat'] ) && $now <= (int) $payload['exp'] + 60 && (int) $payload['iat'] <= $now + 60
+			&& preg_match( '/^ver_[0-9a-f]{24}$/', (string) ( $payload['vid'] ?? '' ) );
+		// A live_ key must never accept sandbox attestations.
+		if ( $ok && 0 === strpos( (string) get_option( 'ediverify_api_key', '' ), 'live_' ) && 'production' !== ( $payload['env'] ?? '' ) ) {
+			$ok = false;
 		}
-		if ( 'yes' === get_option( 'ediverify_remote_verify', 'yes' ) && ! self::remote_verify( $token ) ) {
-			return false;
-		}
-		return $data['verificationId'];
+		return $cache[ $token ] = ( $ok ? $payload['vid'] : false );
 	}
 
 	public static function api_base() {
@@ -183,7 +243,8 @@ final class EdiVerify_WC {
 			return $cache[ $token ] = false;
 		}
 		$body = json_decode( wp_remote_retrieve_body( $resp ), true );
-		return $cache[ $token ] = ( is_array( $body ) && true === ( $body['valid'] ?? false ) && self::check() === ( $body['attribute'] ?? '' ) );
+		$ok   = is_array( $body ) && true === ( $body['valid'] ?? false ) && self::check() === ( $body['attribute'] ?? '' );
+		return $cache[ $token ] = ( $ok ? $body : false );
 	}
 
 	public static function validate() {

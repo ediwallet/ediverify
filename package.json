@@ -1,0 +1,13 @@
+{
+  "name": "ediverify-open-rp-bridge",
+  "version": "0.2.0",
+  "description": "Zero-PII EUDI & NL Wallet relying party bridge: OpenID4VP request builder, SD-JWT VC verifier, Ed25519 boolean attestation tokens.",
+  "license": "Apache-2.0",
+  "author": "Matineus (KvK 86555219) <info@matineus.nl>",
+  "repository": { "type": "git", "url": "https://github.com/ediwallet/ediverify.git" },
+  "homepage": "https://ediverify.nl/open-source/",
+  "private": true,
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node --test test/" },
+  "dependencies": {}
+}

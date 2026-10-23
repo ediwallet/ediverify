@@ -4,7 +4,8 @@ Tags: age verification, woocommerce, nl wallet, idin, eidas
 Requires at least: 6.0
 Tested up to: 6.6
 Requires PHP: 7.4
-Stable tag: 1.1.0
+Requires Plugins: woocommerce
+Stable tag: 1.2.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -37,6 +38,11 @@ Deze plugin laadt `https://ediverify.nl/widget.js` op de checkoutpagina en roept
 Nee. Alleen een referentienummer en de uitkomst van de controle.
 
 == Changelog ==
+
+= 1.2.0 =
+* Offline Ed25519-controle van het token met sodium_crypto_sign_verify_detached (PHP 7.2+), API alleen als fallback.
+* Instelbare publieke sleutel voor zelf-hosters.
+* live_-sleutels accepteren geen sandbox-attestaties.
 
 = 1.1.0 =
 * Optionele server-side controle van de token-handtekening via wp_remote_post (action=verify_token).
